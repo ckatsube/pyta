@@ -122,10 +122,18 @@ class HTMLReporter(ColorReporter):
                 for i in range(0, len(html), buffer_size):
                     self.wfile.write(html[i: i + buffer_size])
 
-        server = HTTPServer(('127.0.0.1', 0), OneShotRequestHandler)
-        webbrowser.open(f"http://127.0.0.1:{server.server_port}", new=2)
+        from typing import Callable, Any
+        def wsgi_app(environ: dict, start_response: Callable) -> Any:
+            pass
+        host = '127.0.0.1'
+        server = HTTPServer((host, 0), OneShotRequestHandler)
+        options = {'use_reloader': True, 'use_debugger': True, 'threaded': True}
+        webbrowser.open(f"http://{host}:{server.server_port}", new=2)
+
         server.handle_request()
         server.server_close()
+        from werkzeug.serving import run_simple
+        run_simple(host, 5000, wsgi_app, **options)
 
     @classmethod
     def _vendor_wrap(self, colour_class, text):
