@@ -30,7 +30,9 @@ setup(
         'wrapt>=1.12.0',
         'typeguard>=2.7.1',
         'requests',
-        'click>=8.0.1'
+        'click>=8.0.1',
+        'Werkzeug>=2.0.1',
+        'watchdog>=2.1.3'
     ],
     extras_require={
         'dev': [

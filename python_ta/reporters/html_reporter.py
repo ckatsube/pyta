@@ -1,7 +1,12 @@
 import os
 import webbrowser
+from typing import Any
 from collections import defaultdict, namedtuple
-from http.server import HTTPServer, BaseHTTPRequestHandler
+
+import socket
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from werkzeug.serving import run_simple, is_running_from_reloader
+from werkzeug.wrappers import Response, Request
 
 from jinja2 import Environment, FileSystemLoader
 from datetime import datetime
@@ -12,6 +17,9 @@ from pygments.lexers import PythonLexer
 from pygments.formatters import HtmlFormatter
 
 from .color_reporter import ColorReporter
+
+import logging
+logging.getLogger("werkzeug").disabled = True
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
 
@@ -103,7 +111,7 @@ class HTMLReporter(ColorReporter):
         with open(output_path, 'wb') as f:
             f.write(html)
 
-    def _open_html_in_browser(self, html: bytes) -> None:
+    def _open_html_in_browser(self, html: bytes, debug: bool = False) -> None:
         """
         Display html in a web browser without creating a temp file.
         Instantiates a trivial http server and uses the webbrowser module to
@@ -111,29 +119,40 @@ class HTMLReporter(ColorReporter):
 
         Adapted from: https://github.com/plotly/plotly.py/blob/master/packages/python/plotly/plotly/io/_base_renderers.py#L655
         """
-
-        class OneShotRequestHandler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                self.send_response(200)
-                self.send_header("Content-type", "text/html")
-                self.end_headers()
-
-                buffer_size = 1024 * 1024
-                for i in range(0, len(html), buffer_size):
-                    self.wfile.write(html[i: i + buffer_size])
-
-        from typing import Callable, Any
-        def wsgi_app(environ: dict, start_response: Callable) -> Any:
-            pass
         host = '127.0.0.1'
-        server = HTTPServer((host, 0), OneShotRequestHandler)
-        options = {'use_reloader': True, 'use_debugger': True, 'threaded': True}
-        webbrowser.open(f"http://{host}:{server.server_port}", new=2)
 
-        server.handle_request()
-        server.server_close()
-        from werkzeug.serving import run_simple
-        run_simple(host, 5000, wsgi_app, **options)
+        if debug:
+            if not is_running_from_reloader():
+                port = _get_open_port(host)
+                os.environ['PYTA_HTML_PORT'] = str(port)
+                webbrowser.open(f"http://{host}:{port}", new=2)
+            else:
+                port = int(os.environ['PYTA_HTML_PORT'])
+
+            @Request.application
+            def style_report_app(request: Request) -> Any:
+                """WSGI application that returns the rendered html template as a response"""
+                return Response(html, mimetype='text/html')
+
+            run_simple(hostname=host, port=port, application=style_report_app,
+                       use_reloader=True)
+        else:
+            class OneShotRequestHandler(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    self.send_response(200)
+                    self.send_header("Content-type", "text/html")
+                    self.end_headers()
+
+                    buffer_size = 1024 * 1024
+                    for i in range(0, len(html), buffer_size):
+                        self.wfile.write(html[i: i + buffer_size])
+
+            host = '127.0.0.1'
+            server = HTTPServer((host, 0), OneShotRequestHandler)
+            webbrowser.open(f"http://{host}:{server.server_port}", new=2)
+
+            server.handle_request()
+            server.server_close()
 
     @classmethod
     def _vendor_wrap(self, colour_class, text):
@@ -144,3 +163,12 @@ class HTMLReporter(ColorReporter):
         return text
 
     _display = None
+
+
+def _get_open_port(host: str) -> int:
+    """Returns a randomly generated available port"""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((host, 0))
+        _, port = s.getsockname()[:2]
+        return port
