@@ -95,7 +95,7 @@ class HTMLReporter(PythonTaReporter):
             rendered_template = rendered_template.encode('utf8')
             self._open_html_in_browser(rendered_template)
 
-    def _open_html_in_browser(self, html: bytes, debug: bool = False) -> None:
+    def _open_html_in_browser(self, html: bytes, debug: bool = True) -> None:
         """
         Display html in a web browser without creating a temp file.
         Instantiates a trivial http server and uses the webbrowser module to
@@ -152,13 +152,11 @@ class HTMLReporter(PythonTaReporter):
                 HtmlFormatter(nowrap=True, lineseparator='', classprefix='pygments-')
             )
 
-            return (
-                    (space_count * cls._SPACE) + colour +
-                    new_text +
-                    cls._COLOURING['reset']
-            )
-
-    _display = None
+        return (
+                (space_count * cls._SPACE) + colour +
+                new_text +
+                cls._COLOURING['reset']
+        )
 
 
 def _get_open_port(host: str) -> int:
