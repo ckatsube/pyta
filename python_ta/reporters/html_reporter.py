@@ -5,7 +5,7 @@ from typing import Any
 
 import socket
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from werkzeug.serving import run_simple, is_running_from_reloader
+from werkzeug.serving import run_simple
 from werkzeug.wrappers import Response, Request
 
 from jinja2 import Environment, FileSystemLoader
@@ -93,9 +93,9 @@ class HTMLReporter(PythonTaReporter):
             self.writeln(rendered_template)
         else:
             rendered_template = rendered_template.encode('utf8')
-            self._open_html_in_browser(rendered_template)
+            self._open_html_in_browser(rendered_template, dt)
 
-    def _open_html_in_browser(self, html: bytes, debug: bool = True) -> None:
+    def _open_html_in_browser(self, html: bytes, dt: str, debug: bool = True) -> None:
         """
         Display html in a web browser without creating a temp file.
         Instantiates a trivial http server and uses the webbrowser module to
@@ -106,20 +106,32 @@ class HTMLReporter(PythonTaReporter):
         host = '127.0.0.1'
 
         if debug:
-            if not is_running_from_reloader():
+            if not (port_str := os.environ.get('PYTA_HTML_PORT')):
                 port = _get_open_port(host)
                 os.environ['PYTA_HTML_PORT'] = str(port)
-                webbrowser.open(f"http://{host}:{port}", new=2)
+                server_url = f"http://{host}:{port}"
+                webbrowser.open(server_url, new=2)
+                print(f' * Opening on {server_url}', file=sys.stderr)
             else:
-                port = int(os.environ['PYTA_HTML_PORT'])
+                port = int(port_str)
+                print(f' * Reloading report at {dt}', file=sys.stderr)
 
             @Request.application
             def style_report_app(request: Request) -> Any:
                 """WSGI application that returns the rendered html template as a response"""
+                if request.method == 'GET' and request.path == '/creationTime':
+                    return Response(dt)
                 return Response(html, mimetype='text/html')
 
+            extra_files = [
+                'python_ta/reporters/templates/stylesheet.css',
+                'python_ta/reporters/templates/template.html',
+                'python_ta/reporters/templates/script.js'
+            ]
+
             run_simple(hostname=host, port=port, application=style_report_app,
-                       use_reloader=True)
+                       use_reloader=True, extra_files=extra_files)
+
         else:
             class OneShotRequestHandler(BaseHTTPRequestHandler):
                 def do_GET(self):
